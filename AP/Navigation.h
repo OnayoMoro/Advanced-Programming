@@ -23,8 +23,8 @@ public:
 	~Navigation();
 
 	bool FindRoute(const int start, const int end, const std::string& tr, const std::string& R);
-	bool ConstructRoute(vector<int>& visited, vector<int>& clonerefs, int start, int end);
-	bool ConstructShortestRoute(vector<int>& visited, vector<int>& clonerefs, const int start, const int end);
+	bool ConstructRoute(vector<int>& visited, vector<int>& clonerefs, vector<string>& transport, const int start, const int end);
+	bool ConstructShortestRoute(vector<int>& visited, vector<int>& clonerefs, vector<string>& transport, const int start, const int end);
 	bool PrintRoute(vector<int>& MyRoute);
 	bool Route(vector<int>& currentrefs, int start, int end, const std::string& tr, const std::string& R);
 	const bool BuildNetwork(const std::string& fileNamePlaces, const std::string& fileNameLinks)const;

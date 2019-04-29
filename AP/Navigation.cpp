@@ -125,13 +125,20 @@ const bool Navigation::BuildNetwork(const string &fileNamePlaces, const string &
 			arcs.push_back(a);
 
 			for (Nodes* const n : nodes) {
-				if (startRef == n->g_ref()) {
+				if (n->g_ref() == startRef) {
 					arcs[i]->s_destination(n);
-					n->add_arcs(arcs[i]);
+					Arcs* const ar = new Arcs(startRef, endRef, transport);
+					n->add_arcs(ar);
+					for (Nodes* const no : nodes)
+						if (endRef == no->g_ref())
+							ar->s_destination(no);
 				}
 				else if (n->g_ref() == endRef) {
-					arcs[i]->s_destination(n);
-					n->add_arcs(arcs[i]);
+					Arcs* const ar = new Arcs(endRef, startRef, transport);
+					n->add_arcs(ar);
+					for (Nodes* const no : nodes)
+						if (startRef == no->g_ref())
+							ar->s_destination(no);
 				}
 			}i++;
 		}
@@ -145,7 +152,6 @@ bool Navigation::MaxDist() {
 	{
 		const double x1 = nodes[i]->g_lat();
 		const double y1 = nodes[i]->g_longitude();
-
 		for (int p = i + 1; p < nodes.size(); p++)
 		{
 			const double x2 = nodes[p]->g_lat();
@@ -158,38 +164,38 @@ bool Navigation::MaxDist() {
 				max = dist / 1000;
 			}
 		}
-	}_outFile << "MaxDist \n" << start << "," << end << "," << max << "\n" << endl; return true;
+	}
+	_outFile << "MaxDist \n" << start << "," << end << "," << max << "\n" << endl; return true;
 }
 
 bool Navigation::MaxLink() {
 	int maxstart = 0, maxend = 0, bothrefs = 0;
-	double x1, y1, x2, y2, max = 0, dist;
+	double x1, y1, x2, y2, max = 0;
 
 	for (Arcs* const a : arcs)
 	{
-		const int startref = a->g_startref();
-		const int endref = a->g_endref();
 		for (Nodes* const n : nodes)
 		{
-			if (startref == n->g_ref()) {
+			if (a->g_startref() == n->g_ref()) {
 				bothrefs += 1;
 				x1 = n->g_lat();
 				y1 = n->g_longitude();
 			}
-			else if (endref == n->g_ref()) {
+			else if (a->g_endref() == n->g_ref()) {
 				bothrefs += 1;
 				x2 = n->g_lat();
 				y2 = n->g_longitude();
 			}
 			if (bothrefs == 2) {
 				bothrefs = 0;
-				dist = Distance(x1, y1, x2, y2);
+				const double dist = Distance(x1, y1, x2, y2);
 				if (dist / 1000 > max)
 				{
 					max = dist / 1000;
-					maxstart = startref;
-					maxend = endref;
+					maxstart = a->g_startref();
+					maxend = a->g_endref();
 				}
+				break;
 			}
 		}
 	}_outFile << "MaxLink \n" << maxstart << "," << maxend << "," << max << "\n" << endl; return true;
@@ -215,9 +221,11 @@ bool Navigation::FindDist(const int start, const int end) {
 		}
 		if (bothrefs == 2) {
 			const double dist = Distance(x1, y1, x2, y2) / 1000;
-			_outFile << "FindDist " << start << " " << end << "\n" << startplace << "," << endplace << "," << dist << "\n" << endl; break;
+			_outFile << "FindDist " << start << " " << end << "\n" << startplace << "," << endplace << "," << dist << "\n" << endl;
+			return true;
 		}
-	}return true;
+	}
+	return true;
 }
 
 bool Navigation::FindNeighbour(const int ref) {
@@ -227,11 +235,7 @@ bool Navigation::FindNeighbour(const int ref) {
 		if (ref == n->g_ref()) {
 			vector<Arcs*> const arcs = n->g_arcs();
 			for (Arcs* const a : arcs) {
-				if (ref == a->g_endref())
-					neighb = neighb + to_string(a->g_startref()) + "\n";
-
-				if (ref == a->g_startref())
-					neighb = neighb + to_string(a->g_endref()) + "\n";
+				neighb = neighb + to_string(a->g_endref()) + "\n";
 			}
 			_outFile << neighb << endl; return true;
 		}
@@ -292,27 +296,24 @@ bool Navigation::FindRoute(const int start, const int end, const std::string& tr
 			vector<Arcs*> myarcs = nodes[n]->g_arcs();
 			for (int a = 0; a < myarcs.size(); a++)
 			{
-				if (end == myarcs[a]->g_startref() && (count(transport.begin(), transport.end(), myarcs[a]->g_transport_method())))
+				if (end == myarcs[a]->g_endref() && (count(transport.begin(), transport.end(), myarcs[a]->g_transport_method())))
 				{
 					_outFile << "\n" << start << "\n" << end << "\n" << endl;
 					return true;
 				}
-				else if (end == myarcs[a]->g_endref() && (count(transport.begin(), transport.end(), myarcs[a]->g_transport_method())))
-				{
-					_outFile << "\n" << start << "\n" << end << "\n" << endl;
-					return true;
-				}
-				else if (start == myarcs[a]->g_startref() && (count(transport.begin(), transport.end(), myarcs[a]->g_transport_method())))
+				else if (count(transport.begin(), transport.end(), myarcs[a]->g_transport_method()))
 				{
 					currentrefs.push_back(myarcs[a]->g_endref());
 				}
-				else if (start == myarcs[a]->g_endref() && (count(transport.begin(), transport.end(), myarcs[a]->g_transport_method())))
-				{
-					currentrefs.push_back(myarcs[a]->g_startref());
-				}
 			}
-			if (Route(currentrefs, start, end, tr, R))
+			if (myarcs.size() != 0)
 			{
+				Route(currentrefs, start, end, tr, R);
+				return true;
+			}
+			else if (myarcs.size() == 0)
+			{
+				_outFile << "\n" << "FAIL" << "\n" << endl;
 				return true;
 			}
 
@@ -330,52 +331,35 @@ bool Navigation::Route(vector<int>& currentrefs, const int start, const int end,
 	{
 		for (int n = 0; n < nodes.size(); n++)
 		{
-			if (nodes[n]->g_ref() == currentrefs[c])
+			if (currentrefs.size() != 0 && nodes[n]->g_ref() == currentrefs[c])
 			{
 				if (!count(visited.begin(), visited.end(), currentrefs[c]))
 				{
 					visited.push_back(currentrefs[c]);
 				}
-
 				vector<Arcs*> myarcs = nodes[n]->g_arcs();
 				for (int a = 0; a < myarcs.size(); a++)
 				{
 					if ((count(transport.begin(), transport.end(), myarcs[a]->g_transport_method())))
 					{
-						if (end == myarcs[a]->g_startref())
+						if (end == myarcs[a]->g_endref())
 						{
 							if (R == "FR")
 							{
 								visited.push_back(myarcs[a]->g_startref());
-								ConstructRoute(visited, clonerefs, start, end); return true;
+								ConstructRoute(visited, clonerefs, transport, start, end);
+								return true;
 							}
 							else if (R == "FSR")
 							{
 								visited.push_back(myarcs[a]->g_startref());
-								ConstructShortestRoute(visited, clonerefs, start, end); return true;
-							}
-
-						}
-						else if (end == myarcs[a]->g_endref())
-						{
-							if (R == "FR")
-							{
-								visited.push_back(myarcs[a]->g_startref());
-								ConstructRoute(visited, clonerefs, start, end); return true;
-							}
-							else if (R == "FSR")
-							{
-								visited.push_back(myarcs[a]->g_startref());
-								ConstructShortestRoute(visited, clonerefs, start, end); return true;
+								ConstructShortestRoute(visited, clonerefs, transport, start, end);
+								return true;
 							}
 						}
-						else if ((currentrefs[c] == myarcs[a]->g_startref()) && (!count(visited.begin(), visited.end(), myarcs[a]->g_endref())))
+						else if (!count(visited.begin(), visited.end(), myarcs[a]->g_endref()))
 						{
 							currentrefs.push_back(myarcs[a]->g_endref());
-						}
-						else if (currentrefs[c] == myarcs[a]->g_endref() && (!count(visited.begin(), visited.end(), myarcs[a]->g_startref())))
-						{
-							currentrefs.push_back(myarcs[a]->g_startref());
 						}
 					}
 				}
@@ -388,10 +372,10 @@ bool Navigation::Route(vector<int>& currentrefs, const int start, const int end,
 	return true;
 }
 
-bool Navigation::ConstructShortestRoute(vector<int>& visited, vector<int>& clonerefs, const int start, const int end)
+bool Navigation::ConstructShortestRoute(vector<int>& visited, vector<int>& clonerefs, vector<string>& transport, const int start, const int end)
 {
 	reverse(visited.begin(), visited.end()); int ref;
-	vector<int> MyRoute, PastRoutes; MyRoute.push_back(end); PastRoutes.push_back(end);
+	vector<int> MyRoute; MyRoute.push_back(end);
 
 	for (int r = 0; r < MyRoute.size(); r++)
 	{
@@ -401,36 +385,39 @@ bool Navigation::ConstructShortestRoute(vector<int>& visited, vector<int>& clone
 			{
 				for (const int c : clonerefs)
 				{
-					if ((MyRoute.back() == arcs[m]->g_startref() && c == arcs[m]->g_endref()))
+					if ((MyRoute.back() == arcs[m]->g_startref() && c == arcs[m]->g_endref()) && (count(transport.begin(), transport.end(), arcs[m]->g_transport_method())))
 					{
-						MyRoute.push_back(c); MyRoute.push_back(start); PrintRoute(MyRoute); return true;
+						MyRoute.push_back(c); MyRoute.push_back(start); PrintRoute(MyRoute);
+						return true;
 					}
-					else if ((MyRoute.back() == arcs[m]->g_endref() && c == arcs[m]->g_startref()))
+					else if ((MyRoute.back() == arcs[m]->g_endref() && c == arcs[m]->g_startref()) && (count(transport.begin(), transport.end(), arcs[m]->g_transport_method())))
 					{
-						MyRoute.push_back(c); MyRoute.push_back(start); PrintRoute(MyRoute); return true;
+						MyRoute.push_back(c); MyRoute.push_back(start); PrintRoute(MyRoute);
+						return true;
 					}
 				}
-				if ((MyRoute[r] == arcs[m]->g_startref() && visited[v] == arcs[m]->g_endref()) && (!count(PastRoutes.begin(), PastRoutes.end(), arcs[m]->g_endref())))
+				if ((MyRoute[r] == arcs[m]->g_startref() && visited[v] == arcs[m]->g_endref()) && (count(transport.begin(), transport.end(), arcs[m]->g_transport_method())))
 				{
 					ref = visited[v];
-					PastRoutes.push_back(ref);
+					visited.erase(visited.begin() + v);
 				}
-				else if ((MyRoute[r] == arcs[m]->g_endref() && visited[v] == arcs[m]->g_startref()) && (!count(PastRoutes.begin(), PastRoutes.end(), arcs[m]->g_startref())))
+				else if ((MyRoute[r] == arcs[m]->g_endref() && visited[v] == arcs[m]->g_startref()) && (count(transport.begin(), transport.end(), arcs[m]->g_transport_method())))
 				{
 					ref = visited[v];
-					PastRoutes.push_back(arcs[m]->g_startref());
+					visited.erase(visited.begin() + v);
 				}
 			}
 		}
 		MyRoute.push_back(ref);
 	}
+	_outFile << "\n" << "FAIL" << "\n" << endl;
 	return true;
 }
 
-bool Navigation::ConstructRoute(vector<int>& visited, vector<int>& clonerefs, const int start, const int end)
+bool Navigation::ConstructRoute(vector<int>& visited, vector<int>& clonerefs, vector<string>& transport, const int start, const int end)
 {
 	reverse(visited.begin(), visited.end());
-	vector<int> MyRoute, PastRoutes; MyRoute.push_back(end); PastRoutes.push_back(end);
+	vector<int> MyRoute; MyRoute.push_back(end);
 	for (int v = 0; v < visited.size(); v++)
 	{
 		for (int m = 0; m < arcs.size(); m++)
@@ -439,25 +426,30 @@ bool Navigation::ConstructRoute(vector<int>& visited, vector<int>& clonerefs, co
 			{
 				if ((MyRoute.back() == arcs[m]->g_startref() && c == arcs[m]->g_endref()))
 				{
-					MyRoute.push_back(c); MyRoute.push_back(start); PrintRoute(MyRoute); return true;
+					MyRoute.push_back(c); MyRoute.push_back(start);
+					PrintRoute(MyRoute);
+					return true;
 				}
 				else if ((MyRoute.back() == arcs[m]->g_endref() && c == arcs[m]->g_startref()))
 				{
-					MyRoute.push_back(c); MyRoute.push_back(start); PrintRoute(MyRoute); return true;
+					MyRoute.push_back(c); MyRoute.push_back(start);
+					PrintRoute(MyRoute);
+					return true;
 				}
 			}
-			if ((MyRoute.back() == arcs[m]->g_startref() && visited[v + 1] == arcs[m]->g_endref()) && (!count(PastRoutes.begin(), PastRoutes.end(), visited[v + 1])))
+			if ((MyRoute.back() == arcs[m]->g_startref() && visited[v + 1] == arcs[m]->g_endref()) && (count(transport.begin(), transport.end(), arcs[m]->g_transport_method())))
 			{
 				MyRoute.push_back(visited[v + 1]);
-				PastRoutes.push_back(visited[v + 1]);
+				visited.erase(visited.begin() + v);
 			}
-			else if ((MyRoute.back() == arcs[m]->g_endref() && visited[v + 1] == arcs[m]->g_startref()) && (!count(PastRoutes.begin(), PastRoutes.end(), visited[v + 1])))
+			else if ((MyRoute.back() == arcs[m]->g_endref() && visited[v + 1] == arcs[m]->g_startref()) && (count(transport.begin(), transport.end(), arcs[m]->g_transport_method())))
 			{
 				MyRoute.push_back(visited[v + 1]);
-				PastRoutes.push_back(visited[v + 1]);
+				visited.erase(visited.begin() + v);
 			}
 		}
 	}
+	_outFile << "\n" << "FAIL" << "\n" << endl;
 	return true;
 }
 
